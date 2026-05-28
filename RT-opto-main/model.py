@@ -12,6 +12,8 @@ GRU is chosen over LSTM here because:
 - Empirically comparable to LSTM on sequences of this length (~240 steps).
 """
 
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
 
