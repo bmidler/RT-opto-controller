@@ -1,0 +1,10 @@
+Metadata-Version: 2.1
+Name: campy
+Version: 2.0.1
+License-File: LICENSE.txt
+Requires-Dist: imageio
+Requires-Dist: matplotlib
+Requires-Dist: numpy
+Requires-Dist: pyserial
+Requires-Dist: pyyaml
+Requires-Dist: scikit-image

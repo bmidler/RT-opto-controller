@@ -1,0 +1,2 @@
+[console_scripts]
+campy-acquire = campy.campy:Main
