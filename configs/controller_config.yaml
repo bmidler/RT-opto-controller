@@ -1,0 +1,78 @@
+# Real-time closed-loop optogenetics controller config.
+# Keys map 1:1 to controller/config.py (ControllerConfig). Anything omitted
+# uses the dataclass default. Edit the >>> FILL IN <<< values for your rig.
+
+# --- Frame source -----------------------------------------------------------
+source: "flir"                 # "flir" | "video" | "synthetic"
+source_video: ""               # required only when source == "video"
+frame_rate: 30.0               # MUST match the fps the model was trained at
+rec_time_sec: 0.0              # 0 => run until Ctrl-C
+max_frames: 0                  # 0 => unlimited
+
+# --- Camera (FLIR) ----------------------------------------------------------
+camera_make: "flir"
+camera_selection: 0
+camera_name: "AssayCamera"
+frame_width: 2048              # MUST match training-video resolution
+frame_height: 1536             # MUST match training-video resolution
+pixel_format_input: "gray"     # "gray" (mono8) | "rgb24" | "bayer_rggb8"
+camera_trigger: "Line3"        # hardware trigger line (paces the loop), or "None"
+camera_exposure_us: 10000
+camera_gain: 15.0
+disable_gamma: false
+buffer_mode: "OldestFirst"
+buffer_size: 100
+camera_debug: false
+
+# --- Model / inference ------------------------------------------------------
+model_checkpoint: "RT-opto-main/output/best_model.pt"   # >>> FILL IN <<<
+device: "auto"                 # "auto" | "cuda" | "mps" | "cpu"
+spatial_scale: null            # null => use the value stored in the checkpoint
+
+# --- Classification -> stim decision ---------------------------------------
+trigger_classes: []            # >>> FILL IN <<< class indices that fire the laser
+class_names: []                # optional, for human-readable logging
+onset_frames: 1                # consecutive trigger frames to turn stim ON
+offset_frames: 1               # consecutive non-trigger frames to turn stim OFF
+
+# --- Stim Arduino (NEW board, arduino/stim_controller/stim_controller.ino) --
+stim_enabled: true
+stim_serial_port: ""           # >>> FILL IN <<< e.g. "COM5" or "/dev/ttyACM1"
+stim_baud: 115200
+stim_pin: 9                    # digital TTL pin into the laser driver gate
+pulse_width_us: 5000           # HIGH time per pulse
+frequency_hz: 20.0             # pulse rate while stimulating
+max_pulses: 0                  # 0 => continuous while behaviour detected
+watchdog_ms: 500               # laser auto-OFF if controller stops sending keepalives
+keepalive_ms: 150              # how often to refresh the watchdog while ON
+
+# --- Camera-trigger Arduino (existing campy Teensy) ------------------------
+cam_trigger_enabled: true
+cam_trigger_serial_port: ""    # >>> FILL IN <<< e.g. "COM4"
+cam_trigger_baud: 115200
+cam_trigger_pins: [6]
+
+# Set true to run the whole pipeline with NO serial hardware (commands logged).
+serial_dry_run: false
+
+# --- Output (video + per-frame log) ----------------------------------------
+output_folder: "./rt_opto_recordings"
+video_filename: "session.mp4"
+codec: "h264"                  # "h264" | "h265"
+quality: 23                    # lower = higher quality / bigger files
+preset: "fast"
+gpu_id: -1                     # -1 => CPU encode; 0+ => GPU index (use for 30fps@2048)
+gpu_make: "nvidia"             # "nvidia" | "amd" | "intel"
+pixel_format_output: "rgb0"
+ffmpeg_log_level: "warning"
+
+# --- Live preview -----------------------------------------------------------
+preview_enabled: true          # show a live window with class + STIM ON/OFF overlay
+preview_fps: 15.0              # display refresh rate (independent of acquisition)
+preview_downsample: 2          # show every Nth pixel (smaller/faster window)
+
+# --- Latency / backpressure -------------------------------------------------
+warn_factor: 0.9               # warn when a frame uses > this fraction of budget
+warn_min_interval_sec: 2.0     # rate-limit repeated warnings
+write_queue_maxsize: 256       # bounded video queue (protects against OOM)
+drop_video_when_full: true     # drop video frames (never log/inference) if overloaded
