@@ -6,18 +6,18 @@
 source: "flir"                 # "flir" | "video" | "synthetic"
 source_video: ""               # required only when source == "video"
 frame_rate: 30.0               # MUST match the fps the model was trained at
-rec_time_sec: 0.0              # 0 => run until Ctrl-C
-max_frames: 0                  # 0 => unlimited
+rec_time_sec: 20.0              # 0 => run until Ctrl-C
+max_frames: 30                  # 0 => unlimited
 
 # --- Camera (FLIR) ----------------------------------------------------------
 camera_make: "flir"
 camera_selection: 0
-camera_name: "AssayCamera"
-frame_width: 2048              # MUST match training-video resolution
-frame_height: 1536             # MUST match training-video resolution
+camera_name: "Overhead-Camera"
+frame_width: 1280              # MUST match training-video resolution (1280)
+frame_height: 1024             # MUST match training-video resolution (1024)
 pixel_format_input: "gray"     # "gray" (mono8) | "rgb24" | "bayer_rggb8"
 camera_trigger: "Line3"        # hardware trigger line (paces the loop), or "None"
-camera_exposure_us: 10000
+camera_exposure_us: 500
 camera_gain: 15.0
 disable_gamma: false
 buffer_mode: "OldestFirst"
@@ -25,19 +25,19 @@ buffer_size: 100
 camera_debug: false
 
 # --- Model / inference ------------------------------------------------------
-model_checkpoint: "RT-opto-main/output/best_model.pt"   # >>> FILL IN <<<
-device: "auto"                 # "auto" | "cuda" | "mps" | "cpu"
+model_checkpoint: "best_model.pt"
+device: "cuda"                 # "auto" | "cuda" | "mps" | "cpu"
 spatial_scale: null            # null => use the value stored in the checkpoint
 
 # --- Classification -> stim decision ---------------------------------------
-trigger_classes: []            # >>> FILL IN <<< class indices that fire the laser
+trigger_classes: [1, 2, 3, 4]            # >>> FILL IN <<< class indices that fire the laser
 class_names: []                # optional, for human-readable logging
 onset_frames: 1                # consecutive trigger frames to turn stim ON
 offset_frames: 1               # consecutive non-trigger frames to turn stim OFF
 
 # --- Stim Arduino (NEW board, arduino/stim_controller/stim_controller.ino) --
 stim_enabled: true
-stim_serial_port: ""           # >>> FILL IN <<< e.g. "COM5" or "/dev/ttyACM1"
+stim_serial_port: "COM9"           # >>> FILL IN <<< e.g. "COM5" or "/dev/ttyACM1"
 stim_baud: 115200
 stim_pin: 9                    # digital TTL pin into the laser driver gate
 pulse_width_us: 5000           # HIGH time per pulse
@@ -48,7 +48,7 @@ keepalive_ms: 150              # how often to refresh the watchdog while ON
 
 # --- Camera-trigger Arduino (existing campy Teensy) ------------------------
 cam_trigger_enabled: true
-cam_trigger_serial_port: ""    # >>> FILL IN <<< e.g. "COM4"
+cam_trigger_serial_port: "COM4"    # >>> FILL IN <<< e.g. "COM4"
 cam_trigger_baud: 115200
 cam_trigger_pins: [6]
 
@@ -68,8 +68,8 @@ ffmpeg_log_level: "warning"
 
 # --- Live preview -----------------------------------------------------------
 preview_enabled: true          # show a live window with class + STIM ON/OFF overlay
-preview_fps: 15.0              # display refresh rate (independent of acquisition)
-preview_downsample: 2          # show every Nth pixel (smaller/faster window)
+preview_fps: 24.0              # display refresh rate (independent of acquisition)
+preview_downsample: 1          # show every Nth pixel (smaller/faster window)
 
 # --- Latency / backpressure -------------------------------------------------
 warn_factor: 0.9               # warn when a frame uses > this fraction of budget
