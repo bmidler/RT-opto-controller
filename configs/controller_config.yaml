@@ -6,8 +6,8 @@
 source: "flir"                 # "flir" | "video" | "synthetic"
 source_video: ""               # required only when source == "video"
 frame_rate: 30.0               # MUST match the fps the model was trained at
-rec_time_sec: 20.0              # 0 => run until Ctrl-C
-max_frames: 30                  # 0 => unlimited
+rec_time_sec: 0.0              # 0 => run until Ctrl-C NOTE: does weird thing of dropping first 5 seconds.
+max_frames: 0.0                # Max number of frames, overrides recording time. 0 => unlimited
 
 # --- Camera (FLIR) ----------------------------------------------------------
 camera_make: "flir"
@@ -18,7 +18,7 @@ frame_height: 1024             # MUST match training-video resolution (1024)
 pixel_format_input: "gray"     # "gray" (mono8) | "rgb24" | "bayer_rggb8"
 camera_trigger: "Line3"        # hardware trigger line (paces the loop), or "None"
 camera_exposure_us: 500
-camera_gain: 15.0
+camera_gain: 0.0
 disable_gamma: false
 buffer_mode: "OldestFirst"
 buffer_size: 100
@@ -30,14 +30,14 @@ device: "cuda"                 # "auto" | "cuda" | "mps" | "cpu"
 spatial_scale: null            # null => use the value stored in the checkpoint
 
 # --- Classification -> stim decision ---------------------------------------
-trigger_classes: [1, 2, 3, 4]            # >>> FILL IN <<< class indices that fire the laser
+trigger_classes: [3, 11, 20, 14, 46, 4]  # >>> FILL IN <<< class indices that fire the laser NOTE: these are 0-indexed (relative to how I've been plotting the clusters which are 1-indexed).
 class_names: []                # optional, for human-readable logging
 onset_frames: 1                # consecutive trigger frames to turn stim ON
 offset_frames: 1               # consecutive non-trigger frames to turn stim OFF
 
 # --- Stim Arduino (NEW board, arduino/stim_controller/stim_controller.ino) --
 stim_enabled: true
-stim_serial_port: "COM9"           # >>> FILL IN <<< e.g. "COM5" or "/dev/ttyACM1"
+stim_serial_port: "COM12"           # >>> FILL IN <<< e.g. "COM5" or "/dev/ttyACM1"
 stim_baud: 115200
 stim_pin: 9                    # digital TTL pin into the laser driver gate
 pulse_width_us: 5000           # HIGH time per pulse
@@ -59,7 +59,7 @@ serial_dry_run: false
 output_folder: "./rt_opto_recordings"
 video_filename: "session.mp4"
 codec: "h264"                  # "h264" | "h265"
-quality: 23                    # lower = higher quality / bigger files
+quality: 24                    # lower = higher quality / bigger files
 preset: "fast"
 gpu_id: -1                     # -1 => CPU encode; 0+ => GPU index (use for 30fps@2048)
 gpu_make: "nvidia"             # "nvidia" | "amd" | "intel"
