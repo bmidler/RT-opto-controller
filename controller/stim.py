@@ -39,7 +39,24 @@ class SerialLink:
             print(f"[{self.label}] DRY-RUN (no port opened)")
             return
         import serial  # lazy: pyserial only needed for real hardware
-        self._ser = serial.Serial(port=self.port, baudrate=self.baud, timeout=0.1)
+        try:
+            self._ser = serial.Serial(port=self.port, baudrate=self.baud,
+                                      timeout=0.1)
+        except Exception as e:
+            # Name the ports that DO exist: after re-flashing, a native-USB
+            # board (Nano ESP32) commonly re-enumerates onto a different port.
+            try:
+                from serial.tools import list_ports
+                found = ", ".join(f"{p.device} ({p.description})"
+                                  for p in list_ports.comports()) or "none"
+            except Exception:
+                found = "could not enumerate"
+            raise RuntimeError(
+                f"cannot open {self.label} serial port {self.port!r}: {e}\n"
+                f"  ports currently available: {found}\n"
+                f"  If the port name changed, update the config. If it is "
+                f"correct, close anything else holding it (Arduino IDE Serial "
+                f"Monitor, SpinView, another controller run).") from None
         # NOTE: do NOT assume the board resets here. An AVR Arduino resets on the
         # DTR toggle, but the Nano ESP32 enumerates over native USB and keeps
         # running across a port open/close. The stim board therefore has to
@@ -52,6 +69,8 @@ class SerialLink:
             if echo:
                 print(f"[{self.label}] -> {data!r}")
             return
+        if self._ser is None:
+            return          # port never opened / already closed: nothing to do
         with self._write_lock:
             self._ser.write(data)
             self._ser.flush()
