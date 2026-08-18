@@ -63,6 +63,12 @@ offset_frames: 1               # UNUSED in fixed-duration mode (kept for logging
 # seconds, independent of the event's length. A new onset within an active train
 # resets the timer to the new onset.
 stim_duration_sec: 25.0
+# Ignore a new onset within this many seconds of the last one. With
+# onset_frames: 1 a classifier that flickers 1,0,1,0,... triggers an onset on
+# every other frame, which re-STARTs the board (re-zeroing its pulse counter)
+# many times a second -- the animal then gets pulses at the retrigger rate
+# rather than at frequency_hz. 0.0 => disabled (previous behaviour).
+stim_refractory_sec: 0.0
 
 # --- Stim Arduino (NEW board, arduino/stim_controller/stim_controller.ino) --
 stim_enabled: true # *** IMPORTANT ***

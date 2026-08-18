@@ -370,6 +370,11 @@ class RealTimeController:
             "stim_events_logged": len(self.stim.events),
             "stim_pulses_measured": (len(self.stim_arduino.pulse_marks)
                                      if self.stim_arduino is not None else 0),
+            "stim_board_resets": (self.stim_arduino.n_board_resets
+                                  if self.stim_arduino is not None else 0),
+            "stim_config_errors": (self.stim_arduino.n_config_errors
+                                   if self.stim_arduino is not None else 0),
+            "stim_onsets_suppressed": self.stim.n_onsets_suppressed,
             "cameras": cameras,
             "timing": self.monitor.summary(),
         }
@@ -408,6 +413,14 @@ class RealTimeController:
             self._write_stim_logs()
         except Exception as e:
             print(f"[shutdown] stim logs failed: {e}")
+
+        # Everything the stim board said that wasn't a pulse marker: boot
+        # banners, CONFIG OK/ERR, watchdog trips. These make a mid-session board
+        # reset visible in the session record instead of silently discarded.
+        try:
+            self._write_stim_board_log()
+        except Exception as e:
+            print(f"[shutdown] stim board log failed: {e}")
 
     def _write_camera_metadata_csv(self, i, src, cfg, writer) -> None:
         """Write a key,value metadata.csv into one camera's video folder.
@@ -473,7 +486,13 @@ class RealTimeController:
                 ("onset_frames", self.config.onset_frames),
                 ("offset_frames", self.config.offset_frames),
                 ("stim_duration_sec", self.config.stim_duration_sec),
+                ("stim_refractory_sec", self.config.stim_refractory_sec),
                 ("stim_activations", self.stim.n_activations),
+                ("stim_onsets_suppressed", self.stim.n_onsets_suppressed),
+                ("stim_board_resets", (self.stim_arduino.n_board_resets
+                                       if self.stim_arduino is not None else 0)),
+                ("stim_config_errors", (self.stim_arduino.n_config_errors
+                                        if self.stim_arduino is not None else 0)),
                 ("serial_dry_run", self.config.serial_dry_run),
             ]
             with open(path, "w", newline="") as f:
@@ -619,3 +638,30 @@ class RealTimeController:
                   f"({len(pulses)} {kind} pulses)")
         except Exception as e:
             print(f"[shutdown] stim_pulses.csv write failed: {e}")
+
+    def _write_stim_board_log(self) -> None:
+        """Write stim_board_log.csv: the board's own non-pulse output.
+
+        A board reset, a rejected config or a watchdog trip is the difference
+        between "the laser did what we asked" and "the laser did something
+        else", so it belongs in the session record next to the pulse log.
+        """
+        if self.stim_arduino is None or not self.writers:
+            return
+        messages = self.stim_arduino.board_messages
+        out_dir = self.writers[self.inf_idx].session_dir
+        if not out_dir:
+            return
+        path = os.path.join(out_dir, "stim_board_log.csv")
+        with open(path, "w", newline="") as f:
+            wr = csv.writer(f)
+            wr.writerow(["t_s", "message"])
+            for m in messages:
+                ts = (m["t"] - self.t_start) if self.t_start else 0.0
+                wr.writerow([round(ts, 6), m["text"]])
+        note = ""
+        if self.stim_arduino.n_board_resets:
+            note = (f"  *** {self.stim_arduino.n_board_resets} BOARD RESET(S) "
+                    f"during this session ***")
+        print(f"[shutdown] stim board log -> {path} "
+              f"({len(messages)} messages){note}")
