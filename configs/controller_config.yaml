@@ -88,11 +88,17 @@ serial_dry_run: false
 output_folder: "./rt_opto_recordings"
 session_name: "test"               # session subfolder name (under output_folder). "" => timestamped. Each camera gets <session_name>/<camera_name>/ with its video, classifications.csv, and metadata.csv. NOTE: reusing a name reuses the folder.
 video_filename: "session.mp4"
-codec: "h264"                  # "h264" | "h265"
-quality: 24                    # lower = higher quality / bigger files
+# These four are what campy used on this rig (campy_config_Midler.yaml), and
+# together they reproduce its exact ffmpeg invocation:
+#   hevc_nvenc  -preset fast -qp 24 -bf:v 0 -gpu 0 -vsync 0
+# Think twice before setting gpu_id back to -1: the CPU branch
+# adds "-tune fastdecode" (which DISABLES the deblocking filter -> blocky video)
+# and a hard "-maxrate 10M" ceiling that overrides the crf target.
+codec: "h265"                  # "h264" | "h265"
+quality: 24                    # lower = higher quality / bigger files (-qp on nvenc)
 preset: "fast"
-gpu_id: -1                     # -1 => CPU encode; 0+ => GPU index (use for 30fps@2048)
-gpu_make: "intel"              # "nvidia" | "amd" | "intel"
+gpu_id: 0                      # -1 => CPU encode (see note above); 0+ => GPU index
+gpu_make: "nvidia"             # "nvidia" | "amd" | "intel"
 pixel_format_output: "rgb0"
 ffmpeg_log_level: "warning"
 
