@@ -85,6 +85,10 @@ class ControllerConfig:
     # the PC controls the duration; otherwise the Arduino also caps at
     # max_pulses (set it to round(stim_duration_sec * frequency_hz) to match).
     stim_duration_sec: float = 25.0
+    # Ignore a new onset within this many seconds of the last one. Guards
+    # against a flickering classifier re-triggering the board many times a
+    # second (which re-zeroes its pulse counter each time). 0.0 => disabled.
+    stim_refractory_sec: float = 0.0
 
     # --- Stim Arduino ------------------------------------------------------
     stim_enabled: bool = True
@@ -248,6 +252,66 @@ class ControllerConfig:
             raise ValueError(
                 "stim_enabled but stim_serial_port is empty "
                 "(set serial_dry_run: true to test without hardware)")
+        self._validate_stim()
         if not Path(self.model_checkpoint).exists():
             print(f"[config] WARNING: model_checkpoint not found: "
                   f"{self.model_checkpoint}")
+
+    def _validate_stim(self) -> None:
+        """Reject stim parameter sets the firmware would refuse or that would
+        defeat its safety net. Checked here so a bad config fails before any
+        hardware is touched, and mirrors the validation in
+        arduino/stim_controller/stim_controller.ino."""
+        if not self.stim_enabled:
+            return
+        if self.frequency_hz <= 0:
+            raise ValueError("frequency_hz must be > 0 when stim_enabled")
+        if self.pulse_width_us <= 0:
+            raise ValueError("pulse_width_us must be > 0 when stim_enabled")
+
+        # Duty cycle >= 100% leaves the gate permanently HIGH: the firmware's
+        # "end of pulse" condition can never be reached.
+        duty = self.pulse_width_us * 1e-6 * self.frequency_hz
+        if duty >= 1.0:
+            raise ValueError(
+                f"pulse_width_us x frequency_hz = {duty:.2f} (>= 100% duty): "
+                f"the laser would never switch off. Reduce pulse_width_us "
+                f"({self.pulse_width_us}) or frequency_hz ({self.frequency_hz}).")
+        if duty > 0.5:
+            print(f"[config] WARNING: stim duty cycle is {duty:.0%}")
+
+        # The watchdog is the last line of defence against a stuck-on laser;
+        # the firmware refuses to disable it, so refuse here too.
+        if self.watchdog_ms <= 0:
+            raise ValueError("watchdog_ms must be > 0 (the stim board's "
+                             "auto-off cannot be disabled)")
+        if self.keepalive_ms >= self.watchdog_ms:
+            raise ValueError(
+                f"keepalive_ms ({self.keepalive_ms}) must be < watchdog_ms "
+                f"({self.watchdog_ms}) or the watchdog will fire mid-train")
+        if self.keepalive_ms > self.watchdog_ms / 2:
+            print(f"[config] WARNING: keepalive_ms ({self.keepalive_ms}) leaves "
+                  f"little margin under watchdog_ms ({self.watchdog_ms}); one "
+                  f"dropped keepalive will cut the train short")
+
+        # Keepalives are only sent when a frame arrives, so the frame period
+        # bounds how often the watchdog can actually be fed.
+        if self.frame_rate > 0:
+            frame_ms = 1000.0 / self.frame_rate
+            if frame_ms > self.watchdog_ms / 2:
+                print(f"[config] WARNING: frame period {frame_ms:.0f} ms is "
+                      f"large relative to watchdog_ms ({self.watchdog_ms}); "
+                      f"keepalives ride on frame arrivals")
+
+        # max_pulses is the board-side cap; it should match the PC-side window.
+        if self.max_pulses > 0:
+            expected = round(self.stim_duration_sec * self.frequency_hz)
+            if self.max_pulses != expected:
+                print(f"[config] WARNING: max_pulses={self.max_pulses} but "
+                      f"stim_duration_sec x frequency_hz = {expected}; the "
+                      f"smaller of the two will end the train")
+
+        if self.stim_pin in (0, 1):
+            print(f"[config] WARNING: stim_pin={self.stim_pin} is a UART pin on "
+                  f"many boards; the firmware pins STIM_PIN at compile time and "
+                  f"will reject a mismatching config line")

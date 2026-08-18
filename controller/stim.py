@@ -18,7 +18,13 @@ from .config import ControllerConfig
 
 
 class SerialLink:
-    """Opens a serial port, or logs to stdout in dry-run mode."""
+    """Opens a serial port, or logs to stdout in dry-run mode.
+
+    Writes are mutex-protected: the stim board is written to from the frame
+    thread (S/X/K) and from the reader thread (config re-send after a board
+    reset), and a config line interleaved with a command byte would be parsed
+    as garbage.
+    """
 
     def __init__(self, port: str, baud: int, dry_run: bool, label: str = "serial"):
         self.port = port
@@ -26,6 +32,7 @@ class SerialLink:
         self.dry_run = dry_run
         self.label = label
         self._ser = None
+        self._write_lock = threading.Lock()
 
     def open(self, settle_sec: float = 2.0) -> None:
         if self.dry_run:
@@ -33,7 +40,11 @@ class SerialLink:
             return
         import serial  # lazy: pyserial only needed for real hardware
         self._ser = serial.Serial(port=self.port, baudrate=self.baud, timeout=0.1)
-        # Arduino/Teensy typically resets when the port opens; let it boot.
+        # NOTE: do NOT assume the board resets here. An AVR Arduino resets on the
+        # DTR toggle, but the Nano ESP32 enumerates over native USB and keeps
+        # running across a port open/close. The stim board therefore has to
+        # accept configuration at any time (it does), and we must never rely on
+        # opening the port to put it into a known state.
         time.sleep(settle_sec)
 
     def write(self, data: bytes, echo: bool = True) -> None:
@@ -41,8 +52,9 @@ class SerialLink:
             if echo:
                 print(f"[{self.label}] -> {data!r}")
             return
-        self._ser.write(data)
-        self._ser.flush()
+        with self._write_lock:
+            self._ser.write(data)
+            self._ser.flush()
 
     def readline(self) -> str:
         if self.dry_run or self._ser is None:
@@ -78,13 +90,24 @@ class StimArduino:
         # One entry per pulse reported by the board:
         #   {"t": perf_counter_sec, "board_index": int, "board_us": int}
         self.pulse_marks: list[dict] = []
+        # Every non-pulse line the board emits, kept for the session record:
+        #   {"t": perf_counter_sec, "text": str}
+        self.board_messages: list[dict] = []
+        self.n_board_resets = 0      # boot banners seen AFTER the initial open
+        self.n_config_errors = 0     # "CONFIG ERR ..." replies
         self._reader_thread: Optional[threading.Thread] = None
         self._reader_stop = threading.Event()
+        self._config_ok = threading.Event()
+        self._config_err = threading.Event()
+        self._opened = False         # True once the initial handshake is done
 
     def open(self) -> None:
         self.link.open()
-        self.configure()
+        # The reader must be running BEFORE the first config line is sent: the
+        # board's "CONFIG OK"/"CONFIG ERR" reply is what the handshake waits on.
         self._start_pulse_listener()
+        self.configure(wait=True)
+        self._opened = True
 
     # -- pulse marker listener ---------------------------------------------
     def _start_pulse_listener(self) -> None:
@@ -103,7 +126,43 @@ class StimArduino:
             t = time.perf_counter()            # timestamp at arrival
             if line[0] in ("P", "p"):
                 self._record_pulse(line, t)
-            # Any other line (CONFIG/WATCHDOG/banner) is ignored.
+                continue
+            self._handle_board_message(line, t)
+
+    def _handle_board_message(self, line: str, t: float) -> None:
+        """Record and act on a non-pulse line from the board.
+
+        These used to be discarded, which made a mid-session board reset
+        completely invisible from the PC. They are now kept (and written to
+        stim_board_log.csv at shutdown) and, critically, acted on.
+        """
+        self.board_messages.append({"t": t, "text": line})
+        print(f"[stim/board] {line}")
+
+        if line.startswith("CONFIG OK"):
+            # Verify the board echoed back exactly what we asked for. The board
+            # validates ranges, but a byte corrupted in transit can still yield
+            # a DIFFERENT yet internally-valid config (e.g. "5000" arriving as
+            # "500"), which would silently halve the pulse width. Comparing the
+            # echo is what catches that.
+            bad = self._echo_mismatch(line)
+            if bad:
+                self.n_config_errors += 1
+                print(f"[stim] CONFIG echo mismatch: {bad}")
+                self._config_err.set()
+            else:
+                self._config_ok.set()
+        elif line.startswith("CONFIG ERR"):
+            self.n_config_errors += 1
+            self._config_err.set()
+        elif line.startswith("STIM controller ready"):
+            # The board rebooted. It does NOT reset when we open the port, so
+            # nothing else would ever re-configure it -- without this the board
+            # stays unconfigured (and refuses to stim) until it is re-flashed.
+            if self._opened:
+                self.n_board_resets += 1
+                print("[stim] board reset detected -> re-sending config")
+                self._send_config()
 
     def _record_pulse(self, line: str, t: float) -> None:
         board_index = -1
@@ -119,11 +178,94 @@ class StimArduino:
         self.pulse_marks.append(
             {"t": t, "board_index": board_index, "board_us": board_us})
 
-    def configure(self) -> None:
+    def _config_line(self) -> bytes:
+        """The config line, formatted so the board's strict parser accepts it.
+
+        Field types are pinned here (ints as ints, frequency with a fixed number
+        of decimals) because the firmware rejects any token with trailing
+        characters -- a YAML value of `5000.0` would otherwise be sent as
+        "5000.0" and refused by the integer parser.
+        """
         c = self.config
-        line = (f"{c.stim_pin},{c.pulse_width_us},{c.frequency_hz},"
-                f"{c.max_pulses},{c.watchdog_ms}\n")
-        self.link.write(line.encode())
+        return (f"{int(c.stim_pin)},{int(c.pulse_width_us)},"
+                f"{float(c.frequency_hz):.4f},{int(c.max_pulses)},"
+                f"{int(c.watchdog_ms)}\n").encode()
+
+    def _echo_mismatch(self, line: str) -> str:
+        """Return a description of any field the board echoed back differently.
+
+        The board's reply is "CONFIG OK pin=9 pulseWidthUs=5000 ..."; empty
+        return means every field we care about matches what we sent.
+        """
+        got = {}
+        for tok in line.split():
+            if "=" in tok:
+                k, _, v = tok.partition("=")
+                got[k] = v
+        c = self.config
+        want = {
+            "pin": int(c.stim_pin),
+            "pulseWidthUs": int(c.pulse_width_us),
+            "maxPulses": int(c.max_pulses),
+            "watchdogMs": int(c.watchdog_ms),
+        }
+        bad = []
+        for k, v in want.items():
+            if k not in got:
+                bad.append(f"{k} missing from echo")
+            else:
+                try:
+                    if int(got[k]) != v:
+                        bad.append(f"{k}: sent {v}, board has {got[k]}")
+                except ValueError:
+                    bad.append(f"{k}: unparseable echo {got[k]!r}")
+        # frequency is a float; compare with tolerance
+        if "frequencyHz" in got:
+            try:
+                if abs(float(got["frequencyHz"]) - float(c.frequency_hz)) > 1e-3:
+                    bad.append(f"frequencyHz: sent {c.frequency_hz}, "
+                               f"board has {got['frequencyHz']}")
+            except ValueError:
+                bad.append(f"frequencyHz: unparseable echo {got['frequencyHz']!r}")
+        else:
+            bad.append("frequencyHz missing from echo")
+        return "; ".join(bad)
+
+    def _send_config(self) -> None:
+        self._config_ok.clear()
+        self._config_err.clear()
+        self.link.write(self._config_line())
+
+    def configure(self, wait: bool = True, attempts: int = 3,
+                  timeout: float = 3.0) -> None:
+        """Send the config line and (by default) verify the board accepted it.
+
+        The board validates every field and replies CONFIG OK / CONFIG ERR. A
+        silent failure here used to be invisible AND dangerous: a rejected or
+        truncated config left the board running stale parameters. Now an
+        unacknowledged config is a hard error before any frame is grabbed.
+        """
+        if self.config.serial_dry_run:
+            self.link.write(self._config_line())
+            return
+        for attempt in range(1, attempts + 1):
+            self._send_config()
+            if not wait:
+                return
+            if self._config_ok.wait(timeout):
+                return
+            if self._config_err.is_set():
+                raise RuntimeError(
+                    "stim board REJECTED the config line "
+                    f"({self._config_line()!r}); see the CONFIG ERR reason "
+                    "printed above")
+            print(f"[stim] no CONFIG OK from the board "
+                  f"(attempt {attempt}/{attempts}), retrying")
+        raise RuntimeError(
+            f"stim board did not acknowledge its config after {attempts} "
+            f"attempts on {self.config.stim_serial_port}. Check the port, and "
+            "that stim_controller.ino is flashed and built with "
+            "'USB CDC On Boot: Enabled'.")
 
     def start(self) -> None:
         self.link.write(b"S", echo=True)
@@ -168,12 +310,21 @@ class StimController:
         self.offset_frames = max(1, int(config.offset_frames))
         self.stim_duration_sec = max(0.0, float(config.stim_duration_sec))
         self.keepalive_sec = config.keepalive_ms / 1000.0
+        # Retrigger debounce. With onset_frames=1 a classifier that flickers
+        # 1,0,1,0,... produces an onset on every other frame, so the board is
+        # re-STARTed (and its pulse counter re-zeroed) many times a second --
+        # the animal then receives pulses at the retrigger rate rather than at
+        # frequency_hz, and max_pulses can never be reached. Onsets inside the
+        # refractory window are ignored. 0.0 disables it (previous behaviour).
+        self.refractory_sec = max(0.0, float(config.stim_refractory_sec))
 
         self.is_on = False
         self._consec_on = 0
         self._stim_until = 0.0       # perf_counter time the current train ends
         self._last_keepalive = 0.0
+        self._last_start = float("-inf")   # perf_counter of the last START sent
         self.n_activations = 0
+        self.n_onsets_suppressed = 0
 
         # Edge log: one entry per START / STOP the controller actually commands.
         # Each is {"kind": "START"|"STOP", "t": perf_counter_sec, "frame": int}.
@@ -205,6 +356,13 @@ class StimController:
         # so a later run is a NEW onset that retriggers the train).
         onset = (self._consec_on == self.onset_frames)
 
+        # Debounce retriggers: an onset too soon after the last START is
+        # counted and dropped rather than re-zeroing the board's pulse train.
+        if onset and self.refractory_sec > 0.0 and \
+                (now - self._last_start) < self.refractory_sec:
+            onset = False
+            self.n_onsets_suppressed += 1
+
         if onset:
             if self.is_on:
                 # Retrigger before the previous train finished: close the old
@@ -215,6 +373,7 @@ class StimController:
             self.n_activations += 1
             self._stim_until = now + self.stim_duration_sec
             self._last_keepalive = now
+            self._last_start = now
             self._record("START", now, frame)
             if self.arduino is not None:
                 self.arduino.start()        # re-zeroes pulse counter + phase
