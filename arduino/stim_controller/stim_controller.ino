@@ -3,7 +3,7 @@
 //  ---------------------------------------------------------------------
 //  Receives commands from the RT-opto controller PC and drives a single
 //  digital TTL pin that gates a laser. This is a SEPARATE board from the
-//  camera-trigger Teensy (campy/trigger/trigger.ino).
+//  camera-trigger Teensy (arduino/camera_controller/trigger.ino).
 //
 //  SERIAL PROTOCOL  (115200 baud)
 //  ------------------------------

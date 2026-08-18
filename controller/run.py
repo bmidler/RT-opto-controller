@@ -4,8 +4,7 @@
     python -m controller.run configs/controller_config.yaml --source synthetic \
         --dry-run --max-frames 300
 
-Run from the repository root (the directory containing Campy-main/ and
-RT-opto-main/).
+Run from the repository root (the directory containing controller/ and utils/).
 """
 
 from __future__ import annotations

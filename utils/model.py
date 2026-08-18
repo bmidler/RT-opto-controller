@@ -10,6 +10,12 @@ GRU is chosen over LSTM here because:
 - Fewer parameters → faster inference (critical for real-time deployment).
 - Single hidden state → simpler state management during live streaming.
 - Empirically comparable to LSTM on sequences of this length (~240 steps).
+
+Vendored unchanged from the RT-opto training repo. The architecture arguments
+(cnn_channels, gru_hidden, gru_layers, dropout) are not hard-coded anywhere in
+the controller -- controller/classifier.py reads them back out of the training
+checkpoint so live inference cannot silently diverge from how the model was
+trained. Keep this file in sync with the training repo if the model changes.
 """
 
 from __future__ import annotations

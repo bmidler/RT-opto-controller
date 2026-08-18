@@ -1,8 +1,8 @@
 """Frame sources.
 
-`FlirSource` wraps campy's FLIR/PySpin functions for a single
-hardware-triggered camera. `VideoFileSource` and `SyntheticSource` let the
-whole pipeline run with no hardware attached (offline testing / smoke tests).
+`FlirSource` wraps the vendored FLIR/PySpin helpers (utils/flir.py) for a
+single hardware-triggered camera. `VideoFileSource` and `SyntheticSource` let
+the whole pipeline run with no hardware attached (offline / smoke tests).
 
 All sources implement the same tiny interface:
     open()  -> configure, sets .frame_height / .frame_width / .is_color
@@ -18,9 +18,6 @@ from typing import Optional, Tuple
 import numpy as np
 
 from .config import ControllerConfig
-from .paths import setup_paths
-
-setup_paths()
 
 Frame = Tuple[np.ndarray, float]
 
@@ -68,9 +65,9 @@ class FlirSystem:
         self.device_list = None
 
     def open(self) -> "FlirSystem":
-        from campy.cameras import flir  # lazy: imports PySpin
+        from utils import flir  # lazy: imports PySpin
         self._flir = flir
-        self.system = flir.LoadSystem(self.config.to_campy_cam_params())
+        self.system = flir.LoadSystem(self.config.to_flir_cam_params())
         self.device_list = flir.GetDeviceList(self.system)
         return self
 
@@ -95,7 +92,7 @@ class FlirSystem:
 
 
 class FlirSource(FrameSource):
-    """A single FLIR camera via campy.cameras.flir (PySpin).
+    """A single FLIR camera via utils.flir (PySpin).
 
     The camera is expected to be in hardware-trigger mode (cameraTrigger e.g.
     'Line3'); GetNextImage blocks until the camera-trigger Arduino fires, which
@@ -107,7 +104,7 @@ class FlirSource(FrameSource):
 
     def __init__(self, config: ControllerConfig, system: Optional["FlirSystem"] = None):
         self.config = config
-        self.cam_params = config.to_campy_cam_params()
+        self.cam_params = config.to_flir_cam_params()
         self._flir = None
         self._system = system
         self._owns_system = system is None
@@ -117,7 +114,7 @@ class FlirSource(FrameSource):
         self._grab_timeout_ms = int(max(1000, 5 * config.frame_budget_ms))
 
     def open(self) -> None:
-        from campy.cameras import flir  # lazy: imports PySpin
+        from utils import flir  # lazy: imports PySpin
         self._flir = flir
 
         if self._system is None:
@@ -127,7 +124,7 @@ class FlirSource(FrameSource):
         self.cam_params["device"] = device
         self.cam_params["camera"] = device
         # GetSerialNumber reads the transport-layer nodemap (available before
-        # Init); campy returns [] when it's unreadable, so coerce that to "".
+        # Init); flir returns [] when it's unreadable, so coerce that to "".
         serial = flir.GetSerialNumber(device)
         self.camera_serial = str(serial) if serial else ""
         self.cam_params["cameraSerialNo"] = self.camera_serial
@@ -137,8 +134,8 @@ class FlirSource(FrameSource):
             raise RuntimeError("FLIR StartGrabbing failed")
 
         # Read the ACTUAL geometry back off the camera after configuration:
-        # campy rounds frameWidth/Height to a multiple of 16 and the sensor may
-        # clamp the ROI further, so the requested config values can be wrong.
+        # utils/flir.py rounds frameWidth/Height to a multiple of 16 and the
+        # sensor may clamp the ROI further, so requested values can be wrong.
         # Fall back to the requested values only if the node read fails.
         self.frame_width = _read_camera_int(
             self._camera, "Width", self.cam_params.get("frameWidth"))
@@ -149,7 +146,7 @@ class FlirSource(FrameSource):
         self.cam_params["frameWidth"] = self.frame_width
         self.cam_params["frameHeight"] = self.frame_height
         self.is_color = self.config.pixel_format_input not in ("gray", "mono8")
-        # campy configures PixelFormat_RGB8Packed for rgb24 -> channel order RGB.
+        # utils/flir.py sets PixelFormat_RGB8Packed for rgb24 -> channel order RGB.
         self.color_is_bgr = False
 
     def grab(self) -> Optional[Frame]:
@@ -175,7 +172,7 @@ class FlirSource(FrameSource):
             if self._camera is not None:
                 flir.CloseCamera(self.cam_params, self._camera)
         finally:
-            # Drop EVERY reference to the PySpin camera. campy's CloseCamera only
+            # Drop EVERY reference to the PySpin camera. flir.CloseCamera only
             # del's its local handle, so self._camera and the cam_params entries
             # still point at the device. If any camera reference is alive when
             # the system is released (FlirSystem.close -> System.ReleaseInstance),
@@ -194,7 +191,7 @@ class VideoFileSource(FrameSource):
     """Read frames from a video file, paced to the target frame rate.
 
     Useful for replaying a recorded session through the full pipeline offline.
-    cv2 returns BGR frames (same as the RT-opto training pipeline).
+    cv2 returns BGR frames (same as the model's training pipeline).
     """
 
     def __init__(self, config: ControllerConfig, realtime: bool = True):

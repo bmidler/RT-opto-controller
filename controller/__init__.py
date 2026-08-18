@@ -1,6 +1,7 @@
 """Real-time closed-loop optogenetics controller.
 
-Fuses campy (FLIR camera acquisition + video writing) with the RT-opto
-CNN-GRU behaviour classifier to drive a laser via a stim Arduino, in real
-time, at a fixed frame rate.
+Fuses FLIR camera acquisition (utils/flir.py, vendored from campy) with the
+CNN-GRU behaviour classifier (utils/model.py) to drive a laser via a stim
+Arduino, in real time, at a fixed frame rate. Video encoding, the preview
+window, the camera-trigger serial protocol and the stim logic all live here.
 """

@@ -4,7 +4,7 @@ Runs ffmpeg encoding in its own thread so a slow encoder/disk can never stall
 the real-time classify-and-stim hot path. Two streams:
 
   * VIDEO  -- the original full-resolution frames, encoded via imageio-ffmpeg
-              (same codec machinery as campy). Bounded queue; under sustained
+              (ffmpeg via imageio-ffmpeg). Bounded queue; under sustained
               overload the *current* frame may be dropped (and recorded as
               frame_written=False) so memory stays bounded and the loop keeps
               its real-time cadence. The log remains the source of truth.
@@ -38,7 +38,7 @@ LOG_FIELDS = [
 
 
 def build_ffmpeg_params(config: ControllerConfig, pix_fmt_in: str):
-    """Return (codec, pix_fmt_out, output_params). Mirrors campy/writer.py."""
+    """Return (codec, pix_fmt_out, output_params) for imageio-ffmpeg."""
     pix_fmt_out = config.pixel_format_output
     codec = config.codec
     quality = str(config.quality)

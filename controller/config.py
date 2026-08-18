@@ -29,7 +29,7 @@ PER_CAMERA_FIELDS = {
 @dataclass
 class ControllerConfig:
     # --- Frame source ------------------------------------------------------
-    # "flir"      -> real FLIR camera via campy/PySpin (hardware-triggered)
+    # "flir"      -> real FLIR camera via utils/flir.py + PySpin (hw-triggered)
     # "video"     -> read frames from a video file (offline testing)
     # "synthetic" -> generated frames (smoke testing, no hardware)
     source: str = "flir"
@@ -39,7 +39,7 @@ class ControllerConfig:
     rec_time_sec: float = 0.0       # 0 => run until Ctrl-C / max frames
     max_frames: int = 0             # 0 => unlimited
 
-    # --- Camera (FLIR / campy cam_params) ---------------------------------
+    # --- Camera (FLIR cam_params) -----------------------------------------
     camera_make: str = "flir"
     camera_selection: int = 0       # device index
     camera_name: str = "AssayCamera"
@@ -66,7 +66,7 @@ class ControllerConfig:
     inference_camera: str = ""      # camera_name used for inference
 
     # --- Model / inference -------------------------------------------------
-    model_checkpoint: str = "RT-opto-main/output/best_model.pt"
+    model_checkpoint: str = "utils/checkpoints/best_model.pt"
     device: str = "auto"            # "auto" | "cuda" | "mps" | "cpu"
     spatial_scale: Optional[float] = None   # None => use value stored in ckpt
 
@@ -97,7 +97,7 @@ class ControllerConfig:
     watchdog_ms: int = 500          # auto-off if no keepalive within this window
     keepalive_ms: int = 150         # how often to refresh the watchdog while ON
 
-    # --- Camera-trigger Arduino (existing campy Teensy) -------------------
+    # --- Camera-trigger Arduino (arduino/camera_controller/trigger.ino) ---
     cam_trigger_enabled: bool = True
     cam_trigger_serial_port: str = ""   # e.g. "COM4"
     cam_trigger_baud: int = 115200
@@ -195,10 +195,12 @@ class ControllerConfig:
     def frame_budget_ms(self) -> float:
         return 1000.0 / self.frame_rate if self.frame_rate > 0 else float("inf")
 
-    def to_campy_cam_params(self) -> dict:
-        """Build the dict that campy's FLIR functions expect.
+    def to_flir_cam_params(self) -> dict:
+        """Build the cam_params dict that utils/flir.py expects.
 
-        Mirrors the keys campy's flir.py / writer.py read from cam_params.
+        Mirrors the keys utils/flir.py reads off cam_params. The encode keys at
+        the bottom are unused by flir.py; controller/writer.py reads its encode
+        settings straight off this config instead.
         """
         return {
             "cameraMake": self.camera_make,
