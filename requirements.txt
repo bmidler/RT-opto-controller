@@ -1,5 +1,5 @@
-# Controller dependencies (in addition to the campy and RT-opto repos).
-# Install into the SAME environment that has PyTorch + the camera SDK.
+# Controller dependencies. Everything the controller imports is either listed
+# here or vendored under utils/ -- there are no sibling-repo dependencies.
 torch
 numpy
 opencv-python

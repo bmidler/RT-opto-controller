@@ -1,4 +1,4 @@
-"""Drives the existing campy camera-trigger Teensy (campy/trigger/trigger.ino).
+"""Drives the camera-trigger Teensy (arduino/camera_controller/trigger.ino).
 
 This board pulses the camera's hardware trigger line at the target frame rate,
 which is what paces the whole real-time loop. We speak its serial protocol
@@ -6,7 +6,7 @@ directly:
 
     "<numPins>,<pin0>,<pin1>,...,<frameRate>,<numPulses>\n"
 
-and stop it by resending the command with numPulses = -1 (campy convention).
+and stop it by resending the command with numPulses = -1 (firmware convention).
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ class CameraTrigger:
 
     def start(self) -> None:
         # Open the port and let the Teensy boot (it resets on serial open and
-        # waits for the config string), mirroring campy's open-then-sleep.
+        # waits for the config string): open, then sleep before writing.
         self.link.open(settle_sec=3.0)
         pins = list(self.config.cam_trigger_pins)
         serial_list = ([len(pins)] + pins

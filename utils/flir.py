@@ -1,7 +1,15 @@
-"""
+"""FLIR/PySpin camera access for the RT-opto controller.
+
+Vendored from campy (campy/cameras/flir.py, https://github.com/ksseverson57/campy).
+Only the functions the controller calls are exercised: LoadSystem, GetDeviceList,
+GetSerialNumber, OpenCamera (-> LoadSettings -> the Configure* chain), StartGrabbing,
+CloseCamera and CloseSystem. See controller/camera.py for the call sites.
+
+Sole change from upstream: dropped `from campy.cameras import unicam`. Nothing in
+this file referenced unicam, and that import was the only thing pulling scipy into
+the controller's dependency set.
 """
 import PySpin
-from campy.cameras import unicam
 import os, sys, time, logging
 import numpy as np
 

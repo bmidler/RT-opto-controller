@@ -50,7 +50,7 @@ cameras:
     camera_selection: 4
 
 # --- Model / inference ------------------------------------------------------
-model_checkpoint: "RT-opto-main/output/supervised_attack_best_model.pt"
+model_checkpoint: "utils/checkpoints/supervised_attack_best_model.pt"
 device: "cuda"                 # "auto" | "cuda" | "mps" | "cpu"
 spatial_scale: null            # null => use the value stored in the checkpoint
 
@@ -75,7 +75,7 @@ max_pulses: 75                 # hardware safety cap per train; 0 => no cap. Mat
 watchdog_ms: 500               # laser auto-OFF if controller stops sending keepalives
 keepalive_ms: 150              # how often to refresh the watchdog while ON
  
-# --- Camera-trigger Arduino (existing campy Teensy) ------------------------
+# --- Camera-trigger Arduino (arduino/camera_controller/trigger.ino) --------
 cam_trigger_enabled: true
 cam_trigger_serial_port: "COM4"
 cam_trigger_baud: 115200

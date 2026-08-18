@@ -1,4 +1,4 @@
-"""Streaming wrapper around the RT-opto CNN-GRU classifier.
+"""Streaming wrapper around the CNN-GRU classifier (utils/model.py).
 
 Loads the trained checkpoint, replicates the exact training preprocessing,
 and exposes a stateful single-frame `classify()` that carries the GRU hidden
@@ -15,13 +15,10 @@ import cv2
 import numpy as np
 import torch
 
-from .paths import setup_paths
-
-setup_paths()
-from model import VideoClassifier  # noqa: E402  (provided by RT-opto-main/)
+from utils.model import VideoClassifier
 
 
-# RT-opto Config defaults, used only if a key is missing from the checkpoint.
+# Training-config defaults, used only if a key is missing from the checkpoint.
 _ARCH_DEFAULTS = dict(
     cnn_channels=[16, 32, 64, 128],
     gru_hidden=128,
@@ -92,7 +89,7 @@ class Classifier:
     def preprocess(self, frame: np.ndarray) -> np.ndarray:
         """Raw camera frame -> normalised float32 grayscale, downscaled.
 
-        Matches RT-opto training: grayscale, resize with INTER_AREA by
+        Matches training preprocessing: grayscale, resize INTER_AREA by
         spatial_scale, then /255. A mono8 (H,W) frame is already grayscale.
         """
         if frame.ndim == 3 and frame.shape[2] == 3:
