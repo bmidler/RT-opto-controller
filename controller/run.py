@@ -10,6 +10,7 @@ Run from the repository root (the directory containing controller/ and utils/).
 from __future__ import annotations
 
 import argparse
+import sys
 
 from .config import ControllerConfig
 from .pipeline import RealTimeController
@@ -51,7 +52,27 @@ def main() -> None:
         config.output_folder = args.output
 
     controller = RealTimeController(config)
-    controller.setup()
+
+    # setup() acquires real hardware: PySpin cameras, ffmpeg encoder processes,
+    # two serial boards. If it raises part-way through, those MUST still be
+    # released -- an abandoned PySpin System with live camera handles makes the
+    # NEXT run abort inside Spinnaker at C++ level, which Python cannot catch
+    # and which prints nothing at all. run() has its own finally; setup() did
+    # not, and that gap turned one recoverable error into a dead rig.
+    try:
+        controller.setup()
+    except BaseException as e:
+        try:
+            controller.shutdown()
+        except Exception as te:
+            print(f"[error] teardown after failed setup also failed: {te}")
+        if isinstance(e, RuntimeError):
+            # Our own actionable errors (serial port, stim handshake): the
+            # message is the point, a traceback just buries it.
+            print(f"\n[error] startup failed: {e}", file=sys.stderr)
+            sys.exit(2)
+        raise
+
     controller.run()
 
 
