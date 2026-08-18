@@ -72,7 +72,15 @@ class RealTimeController:
     def setup(self) -> None:
         self.config.validate()
 
-        # Open every source first so we know real frame sizes + colour order.
+        # Stim board FIRST, before any camera or encoder state exists. Opening
+        # it can fail (port gone, board not answering), and a failure here must
+        # not strand initialised PySpin cameras or running ffmpeg processes --
+        # Spinnaker then refuses the cameras on the next run and aborts the
+        # process at C++ level, with no traceback and no output at all.
+        if self.stim_arduino is not None:
+            self.stim_arduino.open()
+
+        # Open every source next so we know real frame sizes + colour order.
         for src in self.sources:
             src.open()
         inf = self.sources[self.inf_idx]
@@ -111,10 +119,6 @@ class RealTimeController:
             writer.open(session_root=self.session_root, ts=ts)
             writer.start()
             self.writers.append(writer)
-
-        # Stim board: configure before any frames arrive.
-        if self.stim_arduino is not None:
-            self.stim_arduino.open()
 
         # Live preview (daemon thread; decoupled from the hot path). Colour info
         # is the inference camera's; secondary feeds carry their own per-frame.
