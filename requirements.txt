@@ -1,0 +1,11 @@
+# Controller dependencies (in addition to the campy and RT-opto repos).
+# Install into the SAME environment that has PyTorch + the camera SDK.
+torch
+numpy
+opencv-python
+imageio-ffmpeg
+pyyaml
+pyserial          # only needed when driving real Arduinos (serial_dry_run: false)
+
+# Camera SDK (install per FLIR's instructions; not on PyPI):
+#   PySpin (Spinnaker SDK)  -- required only for source: "flir"
