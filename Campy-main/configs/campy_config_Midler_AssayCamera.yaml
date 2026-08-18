@@ -1,0 +1,38 @@
+# This beginner-level config uses the CPU (gpuID: -1) to compress video
+# using ffmpeg's X264 codec
+
+# Recording parameters
+videoFolder: "C:\\CamPy_recordings"
+videoFilename: "P_A_5-EPMPost.mp4"
+frameRate: 60 # 60
+recTimeInSec: 300 # 300
+ffmpegLogLevel: "quiet"               # "quiet", "warning", "info"
+
+# Camera parameters
+numCams: 1
+cameraMake: "flir"
+frameWidth: 2048 # 1664 # 1280
+frameHeight: 1536 # 1280 # 1024
+
+# Flir settings
+cameraTrigger: "Line3"
+bufferSize: 100
+cameraExposureTimeInUs: 10000 # Doesn't do anything--use camera user profile in SpinView.
+cameraGain: 15
+disableGamma: False
+
+# Compression parameters
+pixelFormatInput: "gray" # rgb24 gray bayer_rggb8
+pixelFormatOutput: "rgb0"
+gpuID: 0  # [0,0,0,1]  # Which GPU each camera should use.   
+gpuMake: "nvidia"                     # "nvidia", "amd", "intel"                  
+codec: "h265"                         # "h264", "h265", or user-defined video codec
+quality: 24                           # 0-55; 20 or 24 for less vs more compression
+preset: "fast"                        # How much effort should be put into reducing the file size?
+
+# Display parameters
+displayFrameRate: 24
+
+startArduino: True 
+digitalPins: [6] # e.g. [0,1,2]
+serialPort: "COM4" # e.g. "COM3" or "/dev/ttyACM0"

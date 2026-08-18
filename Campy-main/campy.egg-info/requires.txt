@@ -1,0 +1,6 @@
+imageio
+matplotlib
+numpy
+pyserial
+pyyaml
+scikit-image
