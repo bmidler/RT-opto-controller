@@ -1,6 +1,6 @@
 # Controller dependencies. Everything the controller imports is either listed
 # here or vendored under utils/ -- there are no sibling-repo dependencies.
-torch
+torch[cuda]
 numpy
 opencv-python
 imageio-ffmpeg
