@@ -12,8 +12,6 @@ rec_time_sec: 0.0            # 0 => run until Ctrl-C. Recorded as frame_rate*rec
 max_frames: 0.0                # Max number of frames, overrides recording time. 0 => unlimited
 
 # --- Camera (FLIR) ----------------------------------------------------------
-# These camera_* fields describe a SINGLE camera AND serve as the defaults that
-# every entry in the `cameras:` list below inherits when it omits a field.
 camera_make: "flir"
 camera_selection: 0
 camera_name: "Camera0"
@@ -29,13 +27,6 @@ buffer_size: 100
 camera_debug: false
 
 # --- Multi-camera -----------------------------------------------------------
-# Leave `cameras: []` to record just the single camera defined above (legacy).
-# To run several cameras at once, list each one here. EVERY listed camera is
-# recorded to its own video subfolder (output_folder/<timestamp>_session/
-# <camera_name>/); exactly ONE -- the one whose camera_name matches
-# `inference_camera` -- is fed to the model. Each entry overrides ONLY the
-# fields it names; everything else is inherited from the camera_* values above,
-# so identical cameras only need camera_name + camera_selection.
 inference_camera: "Camera0"   # must equal one camera_name below
 cameras:
   - camera_name: "Camera0"
@@ -55,24 +46,16 @@ device: "cuda"                 # "auto" | "cuda" | "mps" | "cpu"
 spatial_scale: null            # null => use the value stored in the checkpoint
 
 # --- Classification -> stim decision ---------------------------------------
-trigger_classes: [1]  # >>> FILL IN <<< class indices that fire the laser NOTE: these are 0-indexed (relative to how I've been plotting the clusters which are 1-indexed).
+trigger_classes: [1]  # Class indices that fire the laser NOTE: these are 0-indexed (relative to how I've been plotting the clusters which are 1-indexed).
 class_names: ["Non-attack", "Attack"]                # optional, for human-readable logging
 onset_frames: 1                # consecutive trigger frames to register an event onset
 offset_frames: 1               # UNUSED in fixed-duration mode (kept for logging)
-# Fixed-duration mode: each detected onset fires the pulse train for this many
-# seconds, independent of the event's length. A new onset within an active train
-# resets the timer to the new onset.
 stim_duration_sec: 25.0
-# Ignore a new onset within this many seconds of the last one. With
-# onset_frames: 1 a classifier that flickers 1,0,1,0,... triggers an onset on
-# every other frame, which re-STARTs the board (re-zeroing its pulse counter)
-# many times a second -- the animal then gets pulses at the retrigger rate
-# rather than at frequency_hz. 0.0 => disabled (previous behaviour).
-stim_refractory_sec: 0.0
+stim_refractory_sec: 0.0       # Ignore a new onset within this many seconds of the last one.
 
 # --- Stim Arduino (NEW board, arduino/stim_controller/stim_controller.ino) --
 stim_enabled: true # *** IMPORTANT ***
-stim_serial_port: "COM12"           # >>> FILL IN <<< e.g. "COM5" or "/dev/ttyACM1"
+stim_serial_port: "COM12"      # >>> FILL IN <<< e.g. "COM5" or "/dev/ttyACM1"
 stim_baud: 115200
 stim_pin: 9                    # digital TTL pin into the laser driver gate
 pulse_width_us: 5000           # HIGH time per pulse
@@ -94,12 +77,6 @@ serial_dry_run: false
 output_folder: "./rt_opto_recordings"
 session_name: "test"               # session subfolder name (under output_folder). "" => timestamped. Each camera gets <session_name>/<camera_name>/ with its video, classifications.csv, and metadata.csv. NOTE: reusing a name reuses the folder.
 video_filename: "session.mp4"
-# These four are what campy used on this rig (campy_config_Midler.yaml), and
-# together they reproduce its exact ffmpeg invocation:
-#   hevc_nvenc  -preset fast -qp 24 -bf:v 0 -gpu 0 -vsync 0
-# Think twice before setting gpu_id back to -1: the CPU branch
-# adds "-tune fastdecode" (which DISABLES the deblocking filter -> blocky video)
-# and a hard "-maxrate 10M" ceiling that overrides the crf target.
 codec: "h265"                  # "h264" | "h265"
 quality: 24                    # lower = higher quality / bigger files (-qp on nvenc)
 preset: "fast"
